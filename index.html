@@ -385,22 +385,41 @@ const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toStri
 const publicUrl = path => sb.storage.from('haru-clips').getPublicUrl(path).data.publicUrl;
 function dbFail(error){ throw {code:'db', message: /fetch|network/i.test(error.message||'') ? '인터넷 연결을 확인해 주세요.' : `저장소 오류: ${error.message}`}; }
 
-async function gemini(model, prompt){
-  const key = getKey();
-  if(!key) throw {code:'no_key', message:'Gemini API 키가 없어요. 나가기 → AI 키 바꾸기에서 넣어 주세요.'};
+async function geminiOnce(model, prompt, key){
   let r;
   try{
     r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method:'POST', headers:{'Content-Type':'application/json', 'x-goog-api-key':key},
       body: JSON.stringify({contents:[{role:'user', parts:[{text:prompt}]}]})});
-  }catch(_){ throw {code:'network', message:'AI에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.'}; }
+  }catch(_){ throw {code:'network', retry:true, message:'AI에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.'}; }
   const j = await r.json().catch(()=>({}));
   if(!r.ok){
-    if(r.status===429) throw {code:'rate_limited', message:'무료 사용량이 잠시 꽉 찼어요. 1분쯤 뒤에 다시 해 주세요.'};
-    if(r.status===400 && /API key/i.test(j?.error?.message||'')) throw {code:'bad_key', message:'Gemini API 키가 맞지 않아요. 나가기 → AI 키 바꾸기에서 다시 넣어 주세요.'};
-    throw {code:'ai_error', message:`AI 호출 실패: ${j?.error?.message || r.status}`};
+    const m = (j && j.error && j.error.message) || '';
+    if(r.status===400 && /API key/i.test(m)) throw {code:'bad_key', message:'Gemini API 키가 맞지 않아요.'};
+    if(r.status===429) throw {code:'rate_limited', retry:true, message:'무료 사용량이 잠시 꽉 찼어요. 1분쯤 뒤에 다시 해 주세요.'};
+    if(r.status>=500 || /demand|overload|unavailable/i.test(m)) throw {code:'busy', retry:true, message:'AI가 지금 붐벼요. 잠시 뒤에 다시 눌러 주세요.'};
+    throw {code:'ai_error', message:`AI 호출 실패: ${m || r.status}`};
   }
-  return ((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(p=>p.text||'').join('').trim();
+  const text = ((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(p=>p.text||'').join('').trim();
+  if(!text) throw {code:'empty', retry:true, message:'AI가 빈 답을 보냈어요. 다시 눌러 주세요.'};
+  return text;
+}
+// 모델이 붐비면 잠깐 쉬었다가 다른 모델로 바꿔서 다시 시도
+const FALLBACKS = ["gemini-3.6-flash", "gemini-3-flash-preview", "gemini-3.5-flash-lite"];
+async function gemini(model, prompt){
+  const key = getKey();
+  if(!key) throw {code:'no_key', message:'Gemini API 키가 없어요.'};
+  const order = [model, ...FALLBACKS.filter(m=>m!==model)];
+  let last;
+  for(let i=0;i<order.length;i++){
+    try{ return await geminiOnce(order[i], prompt, key); }
+    catch(err){
+      last = err;
+      if(!err.retry) throw err;
+      await new Promise(res=>setTimeout(res, 800 + i*700));
+    }
+  }
+  throw last;
 }
 
 async function api(action, payload, creds){
@@ -845,8 +864,8 @@ function renderPaper(streaming){
     $('pTitle').textContent='';
     $('pBody').className='body empty-paper';
     $('pBody').textContent = state.mode==='question'
-      ? '왼쪽 질문에 몇 개만 대답해 주세요.\n대답이 모이면 오늘 일기를 써 드릴게요.'
-      : '왼쪽에 오늘 있었던 일을 단어로 몇 개 적어 주세요.\n말투를 고르고 "일기 써 줘"를 누르면 여기에 일기가 채워져요.';
+      ? '질문에 몇 개만 대답해 주세요.\n대답이 모이면 오늘 일기를 써 드릴게요.'
+      : '오늘 있었던 일을 단어로 몇 개 적어 주세요.\n말투를 고르고 "일기 써 줘"를 누르면 여기에 일기가 채워져요.';
     $('pTransWrap').hidden=true; $('pFilm').innerHTML=''; tools.hidden=true; return;
   }
   if(!state.editing){
