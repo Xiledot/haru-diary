@@ -137,6 +137,8 @@ select{width:100%;background:var(--paper);border:1px solid var(--line);border-ra
 .film figure{margin:0;aspect-ratio:9/16;max-width:100%;border-radius:8px;overflow:hidden;background:var(--chip);position:relative}
 .film video{width:100%;height:100%;object-fit:cover;display:block}
 .film .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;text-align:center;padding:8px}
+.ghost.danger{color:#a8452a;border-color:#e2b8a6}
+.ghost.danger.armed{background:#a8452a;color:#fff;border-color:#a8452a}
 .tools{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;background:var(--paper)}
 .empty-paper{font-family:var(--diary);color:var(--muted);font-size:16px;line-height:34px}
 .cursor::after{content:"▍";color:var(--accent);animation:blink 1s steps(1) infinite}
@@ -305,6 +307,7 @@ select{width:100%;background:var(--paper);border:1px solid var(--line);border-ra
         <button class="ghost" id="editBtn">직접 고치기</button>
         <button class="ghost" id="copyBtn">본문 복사</button>
         <button class="ghost" id="regenBtn">다시 쓰기</button>
+        <button class="ghost danger" id="delBtn">삭제</button>
       </div>
     </article>
   </div>
@@ -326,16 +329,33 @@ const fmtShort = s => { const [y,m,d]=s.split('-').map(Number); const dt=new Dat
 
 const TONES = [
   {id:'plain', name:'담백한 메모', ex:'점심은 김치찌개. 비가 왔다.', rule:'짧고 담백한 메모체. 꾸밈 없이 사실 위주로, 문장은 짧게 끊는다. 한국어라면 "~했다" 체.'},
-  {id:'essay', name:'감성 에세이', ex:'창밖의 빗소리가 오늘을 천천히…', rule:'잔잔한 감성 에세이체. 감각적인 묘사(소리, 냄새, 빛)를 조금 더하고 여운 있게 끝낸다. 한국어라면 "~했다" 체.'},
+  {id:'essay', name:'감성 에세이', ex:'창밖의 빗소리가 오늘을 천천히…', rule:'잔잔한 감성 에세이체. 문장의 결과 여운으로 감성을 내고, 새로운 장면이나 묘사를 덧붙이지는 않는다. 한국어라면 "~했다" 체.'},
   {id:'chat', name:'반말 수다', ex:'아 오늘 진짜 비 엄청 왔잖아 ㅋㅋ', rule:'친구에게 말하듯 편한 반말 수다체. 감탄사나 ㅋㅋ를 가끔 섞되 과하지 않게.'},
   {id:'kid', name:'그림일기', ex:'날씨: 비. 오늘은 참 재미있었다.', rule:'초등학생 그림일기체. 첫 줄에 "날씨:"를 쓰고, 단순하고 솔직한 문장으로, "참 ~했다" 같은 마무리.'},
-  {id:'poem', name:'짧은 시', ex:'빗소리 사이로 / 찌개가 끓었다', rule:'짧은 산문시. 행갈이를 활용하고 하루의 장면을 이미지로 압축한다.'},
+  {id:'poem', name:'짧은 시', ex:'빗소리 사이로 / 찌개가 끓었다', rule:'짧은 산문시. 행갈이를 활용하고, 준 재료만으로 짧게 압축한다.'},
   {id:'custom', name:'내 말투', ex:'예시 문장을 따라 써요', rule:''}
 ];
 const LANG = {ko:'한국어', en:'영어', ja:'일본어', zh:'중국어(간체)'};
 const LEN = {short:'3~5문장', mid:'7~10문장', long:'12~16문장'};
-const Q_MAIN = ['오늘 아침은 뭐 먹었어?','오늘 제일 오래 머문 곳은 어디야?','오늘 만난 사람 중에 기억나는 사람 있어?','오늘 제일 웃겼거나 좋았던 순간은?','조금 지치거나 귀찮았던 일은?','지금 기분을 한 단어로 말하면?'];
-const Q_POOL = ['오늘 날씨는 어땠어?','점심이나 저녁 중에 맛있었던 거 있어?','오늘 새로 알게 된 게 있어?','오늘 들은 말 중에 마음에 남는 말 있어?','오늘 쓴 돈 중에 아깝지 않았던 건?','오늘 몸 움직인 적 있어? 산책이든 운동이든','사진첩에 오늘 찍은 게 있다면 뭐야?','오늘 하루에 제목을 붙인다면?','내일의 나한테 한마디 한다면?','오늘 미뤄둔 일이 있어?'];
+const Q_CATS = {
+  mood:   ['지금 기분을 한 단어로 말하면?','오늘 하루 점수를 매기면 몇 점이야?','오늘 제일 마음이 편했던 순간은?','오늘 좀 서운하거나 짜증 났던 일 있어?'],
+  moment: ['오늘 제일 웃겼던 순간은?','오늘 제일 기억에 남는 장면 하나만 꼽으면?','오늘 의외였던 일 있어?','오늘 뿌듯했던 일 있어?'],
+  people: ['오늘 만난 사람 중에 기억나는 사람 있어?','오늘 누구랑 제일 많이 얘기했어?','오늘 들은 말 중에 마음에 남는 말 있어?','오늘 연락 온 사람 있어?'],
+  place:  ['오늘 제일 오래 있었던 곳은 어디야?','오늘 처음 가 본 곳 있어?','오늘 밖에 나갔어? 어디 다녀왔어?'],
+  work:   ['오늘 일하면서 있었던 일 하나만 말해 줘','오늘 끝낸 일 있어?','오늘 미뤄 둔 일 있어?','오늘 제일 바빴던 시간은 언제야?'],
+  body:   ['오늘 몸 상태는 어땠어?','오늘 몸 움직인 적 있어? 산책이든 운동이든','어젯밤엔 잘 잤어?'],
+  taste:  ['오늘 먹은 것 중에 기억나는 거 있어?','오늘 마신 거 중에 좋았던 거 있어?','오늘 산 거나 쓴 돈 중에 기억나는 거 있어?'],
+  world:  ['오늘 날씨는 어땠어?','오늘 본 것 중에 예뻤던 거 있어?','오늘 보거나 들은 콘텐츠 있어? 영상이든 노래든','오늘 새로 알게 된 게 있어?'],
+  next:   ['내일 기대되는 일 있어?','내일의 나한테 한마디 한다면?','요즘 계속 생각나는 게 있어?']
+};
+const Q_ALL = Object.values(Q_CATS).flat();
+function shuffle(a){ a=[...a]; for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+// 카테고리가 겹치지 않게 6개를 무작위로 뽑아서 순서도 섞음
+function freshQuestions(exclude=[]){
+  const cats = shuffle(Object.keys(Q_CATS)).slice(0,6);
+  return cats.map(c=>shuffle(Q_CATS[c].filter(q=>!exclude.includes(q)))[0]).filter(Boolean);
+}
+const freshPool = (used)=>shuffle(Q_ALL.filter(q=>!used.includes(q)));
 
 const EXAMPLE = {
   date:'2026-10-20', example:true, mode:'keyword', tone:'essay', lang:'ko', len:'mid',
@@ -347,7 +367,7 @@ const EXAMPLE = {
 
 const state = {
   date: toStr(new Date()), mode:'keyword', tone:'essay', lang:'ko', len:'mid',
-  keywords:[], note:'', qa:[], qQueue:Q_MAIN.map(q=>({q,depth:0})), qPool:[...Q_POOL], customStyle:'',
+  keywords:[], note:'', qa:[], qQueue:freshQuestions().map(q=>({q,depth:0})), qPool:[], customStyle:'',
   followup:true, thinking:false, kwQa:[], kwAskQ:null, kwThinking:false,
   clips:[], current:null, entries:new Map(), generating:false, editing:false
 };
@@ -467,6 +487,13 @@ async function api(action, payload, creds){
       const {error} = await sb.storage.from('haru-clips').upload(path, f, {contentType: f.type || 'video/mp4'});
       if(error) fail('upload', /size|large|exceed/i.test(error.message) ? '20MB 이하 영상만 올릴 수 있어요.' : `업로드 실패: ${error.message}`);
       return {path, url: publicUrl(path)};
+    }
+    case 'delete-entry': {
+      const {error} = await sb.from('haru_entries').delete().eq('user_name', name).eq('date', payload.date);
+      if(error) dbFail(error);
+      const paths = (payload.clips||[]).filter(p=>String(p).startsWith(userKey+'/'));
+      if(paths.length) await sb.storage.from('haru-clips').remove(paths);
+      return {ok:true};
     }
     case 'delete-clip': {
       if(String(payload.path).startsWith(userKey+'/')) await sb.storage.from('haru-clips').remove([payload.path]);
@@ -658,7 +685,7 @@ $('qSkip').onclick=()=>{ const c=state.qQueue.shift(); if(c && !c.depth) state.q
 $('qStop').onclick=()=>{ dropFollowUps(); renderQA(); $('qInput').focus(); };
 $('qSwap').onclick=()=>{
   dropFollowUps();
-  if(!state.qPool.length) state.qPool=[...Q_POOL].filter(q=>!state.qa.some(x=>x.q===q));
+  if(!state.qPool.length) state.qPool=freshPool([...state.qa.map(x=>x.q), ...state.qQueue.map(x=>x.q)]);
   const i=Math.floor(Math.random()*state.qPool.length);
   const nq=state.qPool.splice(i,1)[0]; if(!nq) return;
   const cur=state.qQueue.shift(); if(cur) state.qPool.push(cur.q);
@@ -795,14 +822,23 @@ function buildPrompt(){
     material = state.qa.map(x=>`Q: ${x.q}\nA: ${x.a}`).join('\n');
   }
   const foreign = state.lang!=='ko';
+  const facts = state.mode==='keyword'
+    ? state.keywords.length + state.kwQa.filter(x=>!x.skip).length
+    : state.qa.length;
+  const per = {short:1, mid:1.5, long:2.2}[state.len] || 1.5;
+  const cap = {short:5, mid:10, long:16}[state.len] || 10;
+  const maxSent = Math.max(2, Math.min(cap, Math.round(facts*per)+1));
   return `너는 사용자의 하루를 대신 일기로 써 주는 도우미다.
 
-규칙
-- 사용자가 준 재료만 바탕으로 1인칭 일기를 쓴다. 재료에 없는 사건, 사람, 장소는 지어내지 않는다. 감정이나 분위기를 자연스럽게 잇는 정도의 살 붙이기만 허용한다.
+가장 중요한 규칙: 사용자가 말한 사실만 쓴다.
+- 재료에 없는 사건, 물건, 장소, 사람, 행동, 이유, 소리나 냄새 같은 묘사를 절대 만들지 않는다.
+  예) "닭가슴살, 맛 별로, 혼자 먹음"이 재료라면 "식단 관리를 위해", "포장지를 뜯는 소리", "창가로 스며드는 햇살"처럼 말하지 않은 내용은 쓰면 안 된다.
+- 사용자가 말한 사실을 자연스러운 문장으로 잇고, 말투에 맞게 표현만 다듬는다. 사용자가 말한 감정은 살려 쓰되, 말하지 않은 감정을 크게 부풀리지 않는다.
+- 재료가 적으면 일기도 짧아야 한다. 억지로 늘리지 않는다.
 - 날짜: ${fmtLong(state.date)}
 - 말투: ${toneRule}
 - 언어: ${LANG[state.lang]}로 쓴다.${foreign?' 학습자가 읽기 좋게 너무 어려운 표현은 피한다.':''}
-- 길이: 본문 ${LEN[state.len]}.
+- 길이: 본문 최대 ${maxSent}문장. 재료 한 개당 1~2문장 정도. 이보다 짧아도 괜찮다.
 - 마크다운, 이모지 목록, 머리말 없이 아래 형식만 출력한다.
 
 형식
@@ -854,6 +890,24 @@ async function generate(){
 }
 $('goBtn').onclick=generate;
 $('regenBtn').onclick=generate;
+let delTimer=null;
+$('delBtn').onclick=async()=>{
+  const e=state.current; if(!e) return;
+  const btn=$('delBtn');
+  if(!btn.classList.contains('armed')){
+    btn.classList.add('armed'); btn.textContent='한 번 더 누르면 삭제';
+    clearTimeout(delTimer); delTimer=setTimeout(()=>{ btn.classList.remove('armed'); btn.textContent='삭제'; }, 4000);
+    return;
+  }
+  clearTimeout(delTimer); btn.classList.remove('armed'); btn.textContent='삭제'; btn.disabled=true;
+  try{
+    await api('delete-entry', {date:e.date, clips:(e.clips||[]).map(c=>c.path).filter(Boolean)});
+    state.entries.delete(e.date);
+    loadDate(e.date);
+    setMsg('일기를 지웠어요.');
+  }catch(err){ setMsg(err.message||'지우지 못했어요. 다시 시도해 주세요.', true); }
+  finally{ btn.disabled=false; }
+};
 
 /* ---------- paper ---------- */
 function renderPaper(streaming){
@@ -935,12 +989,13 @@ function loadDate(d, initial){
     state.current=e; state.mode=e.mode||'keyword'; state.tone=e.tone||'essay'; state.lang=e.lang||'ko'; state.len=e.len||'mid';
     if(e.inputs&&e.inputs.keywords){ state.keywords=[...e.inputs.keywords]; state.note=e.inputs.note||''; state.kwQa=(e.inputs.kwQa||[]).map(x=>({...x})); }
     else { state.keywords=[]; state.note=''; state.kwQa=[]; }
-    if(e.inputs&&e.inputs.qa){ state.qa=e.inputs.qa.map(x=>({...x})); state.qQueue=Q_MAIN.filter(q=>!state.qa.some(x=>x.q===q)).map(mk); }
-    else { state.qa=[]; state.qQueue=Q_MAIN.map(mk); }
+    if(e.inputs&&e.inputs.qa){ state.qa=e.inputs.qa.map(x=>({...x})); state.qQueue=freshQuestions(state.qa.map(x=>x.q)).map(mk); }
+    else { state.qa=[]; state.qQueue=freshQuestions().map(mk); }
+    state.qPool=[];
     state.clips=(e.clips||[]).map(c=>({...c}));
     e.clips=state.clips;
   } else {
-    state.keywords=[]; state.note=''; state.qa=[]; state.qQueue=Q_MAIN.map(mk); state.qPool=[...Q_POOL]; state.kwQa=[];
+    state.keywords=[]; state.note=''; state.qa=[]; state.qQueue=freshQuestions().map(mk); state.qPool=[]; state.kwQa=[];
     state.clips=[];
     state.current = null;
   }
