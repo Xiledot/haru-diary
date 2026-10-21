@@ -1,0 +1,6 @@
+# Netlify가 배포할 때 환경 변수 값을 index.html 안에 채워 넣어요.
+# 그래서 GitHub에는 키가 올라가지 않아요.
+# 필요한 환경 변수: GEMINI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
+[build]
+  publish = "."
+  command = "sed -i -e \"s|__GEMINI_API_KEY__|${GEMINI_API_KEY}|\" -e \"s|__SUPABASE_URL__|${SUPABASE_URL}|\" -e \"s|__SUPABASE_ANON_KEY__|${SUPABASE_ANON_KEY}|\" index.html"

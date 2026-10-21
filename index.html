@@ -1,0 +1,962 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>하루 조각 일기</title>
+<meta name="theme-color" content="#ece2cf">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%23f2ede3'/%3E%3Crect x='132' y='104' width='248' height='304' rx='22' fill='%23fffdf8'/%3E%3Crect x='300' y='300' width='96' height='120' rx='14' fill='%23c4683f'/%3E%3C/svg%3E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="하루 조각">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+/* Layout: 왼쪽은 재료를 모으는 작업대, 오른쪽은 완성된 일기 한 장. 아래에 지난 기록. 폰에서는 한 줄로 쌓임 */
+:root{
+  --bg:#ece2cf; --surface:#f5eedf; --paper:#fbf6ec; --ink:#3a3128; --muted:#85776a;
+  --line:#ddcfb8; --accent:#c4683f; --accent-soft:#f1dccb; --accent-ink:#fff;
+  --chip:#e6dac4; --good:#5d7a4f;
+  --ui:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --diary:"Gowun Batang","Nanum Myeongjo","AppleMyungjo",serif;
+  --r:14px;
+  color-scheme:light;
+}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--ui);font-size:15px;line-height:1.6;
+  margin:0;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:calc(20px + env(safe-area-inset-top,0px));padding-bottom:calc(48px + env(safe-area-inset-bottom,0px));-webkit-text-size-adjust:100%}
+[hidden]{display:none!important}
+.wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brand h1{font-family:var(--diary);font-weight:700;font-size:28px;margin:0;letter-spacing:-.01em}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:13.5px}
+.datebox{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px}
+.datebox button{border:0;background:transparent;width:32px;height:32px;border-radius:50%;color:var(--muted)}
+.datebox button:hover{background:var(--chip);color:var(--ink)}
+.datebox input{border:0;background:transparent;font-variant-numeric:tabular-nums;padding:4px 2px}
+
+.main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.08fr);gap:24px;align-items:start}
+@media (max-width:860px){.main{grid-template-columns:1fr}}
+
+.bench{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:20px;min-width:0}
+.label{font-size:12px;font-weight:600;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--chip);border-radius:12px;padding:4px;gap:4px}
+.seg button{border:0;background:transparent;padding:9px 8px;border-radius:9px;font-weight:500;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--paper);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.seg small{display:block;font-weight:400;font-size:11.5px}
+
+/* keyword mode */
+.chipfield{display:flex;flex-wrap:wrap;gap:6px;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:8px}
+.chipfield input{flex:1;min-width:120px;border:0;background:transparent;padding:4px 6px;outline:none}
+.kchip{display:inline-flex;align-items:center;gap:4px;background:var(--accent-soft);color:var(--ink);border-radius:999px;padding:3px 6px 3px 11px;font-size:14px}
+.kchip button{border:0;background:transparent;color:var(--muted);width:20px;height:20px;border-radius:50%;line-height:1}
+textarea{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:10px 12px;resize:vertical;min-height:64px}
+.hint{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+
+/* question mode */
+.qa{display:flex;flex-direction:column;gap:10px}
+.qa-done{display:flex;flex-direction:column;gap:8px;max-height:240px;overflow:auto}
+.qa-item{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:10px;background:var(--paper);border:1px solid var(--line);position:relative}
+.qa-item .q{font-size:12.5px;color:var(--muted)}
+.qa-item .a{font-size:14.5px;padding-right:22px}
+.qa-item button{position:absolute;top:6px;right:6px;border:0;background:transparent;color:var(--muted);width:22px;height:22px;border-radius:50%}
+.ask{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.ask .qtext{font-family:var(--diary);font-size:19px;font-weight:700;margin:0;text-wrap:balance}
+.ask .count{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.ask input{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ghost{border:1px solid var(--line);background:transparent;border-radius:999px;padding:6px 12px;font-size:13.5px;color:var(--muted)}
+.ghost:hover{color:var(--ink);border-color:var(--muted)}
+.primary-sm{border:0;background:var(--ink);color:var(--paper);border-radius:999px;padding:7px 14px;font-size:13.5px;font-weight:500}
+.primary-sm:disabled,.ghost:disabled{opacity:.45;cursor:not-allowed}
+.qa-item.fu{margin-left:18px;border-style:dashed}
+.qa-item.fu::before{content:"↳";position:absolute;left:-15px;top:8px;color:var(--muted);font-size:13px}
+.ask.thinking .qtext{color:var(--muted)}
+.fu-tag{display:inline-block;font-size:11px;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:middle;font-family:var(--ui);font-weight:500}
+.switch{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.switch span{font-size:13.5px}
+.switch small{display:block;color:var(--muted);font-size:12px}
+.switch input{appearance:none;width:40px;height:24px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;flex:none;transition:background .15s}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--paper);transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.switch input:checked{background:var(--accent)}
+.switch input:checked::after{transform:translateX(16px)}
+.kwqa{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+
+/* tone + options */
+.tones{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:420px){.tones{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tone{border:1px solid var(--line);background:var(--paper);border-radius:12px;padding:9px 10px;text-align:left;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tone b{font-weight:600;font-size:14px}
+.tone span{font-family:var(--diary);font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tone[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:420px){.opts{grid-template-columns:1fr}}
+select{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+.pills{display:flex;gap:6px}
+.pills button{flex:1;border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:8px 4px;font-size:13.5px}
+.pills button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+
+/* clips */
+.clips-in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.cin{position:relative;aspect-ratio:9/16;max-width:100%;border-radius:10px;overflow:hidden;background:var(--chip)}
+.cin video{width:100%;height:100%;object-fit:cover;display:block}
+.cin .x{position:absolute;top:4px;right:4px;border:0;background:rgba(0,0,0,.55);color:#fff;width:22px;height:22px;border-radius:50%;font-size:13px;line-height:1}
+.cin .tag{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;border-radius:6px;padding:1px 6px;font-variant-numeric:tabular-nums}
+.cadd{aspect-ratio:9/16;max-width:100%;border:1.5px dashed var(--line);border-radius:10px;background:transparent;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:13px}
+.cadd:hover{border-color:var(--accent);color:var(--accent)}
+.cadd .plus{font-size:24px;line-height:1}
+
+.go{border:0;background:var(--accent);color:var(--accent-ink);border-radius:14px;padding:14px;font-size:16px;font-weight:600;width:100%}
+.go:disabled{opacity:.5;cursor:not-allowed}
+.msg{font-size:13px;color:var(--muted);min-height:1em;margin:-8px 0 0}
+.msg.err{color:var(--accent)}
+
+/* paper */
+.paper{background:var(--paper);border:1px solid var(--line);border-radius:6px 20px 20px 6px;padding:28px 28px 24px;position:relative;min-width:0;
+  box-shadow:0 1px 0 var(--line),0 12px 30px -18px rgba(60,40,20,.35);
+  background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 33px,var(--line) 33px,var(--line) 34px);background-position:0 92px}
+@media (max-width:480px){.paper{padding:22px 18px 20px}}
+.paper .meta{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;background:var(--paper);margin:-4px -4px 0;padding:4px}
+.paper .date{font-family:var(--diary);font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums}
+.badges{display:flex;gap:6px;flex-wrap:wrap}
+.badge{font-size:11.5px;border-radius:999px;padding:2px 9px;background:var(--chip);color:var(--muted)}
+.badge.ex{background:var(--accent-soft);color:var(--accent)}
+.paper h2{font-family:var(--diary);font-size:26px;line-height:1.35;margin:14px 0 6px;text-wrap:balance;background:var(--paper);display:inline-block;padding-right:6px}
+.paper .body{font-family:var(--diary);font-size:17px;line-height:34px;white-space:pre-wrap;margin:14px 0 0;min-height:136px;overflow-wrap:anywhere}
+.paper [contenteditable="true"]{outline:1.5px dashed var(--accent);outline-offset:4px;border-radius:4px}
+.trans{margin-top:18px;border-top:1px solid var(--line);padding-top:12px;background:var(--paper)}
+.trans summary{cursor:pointer;color:var(--muted);font-size:13px}
+.trans p{font-family:var(--diary);font-size:15px;line-height:1.85;white-space:pre-wrap;color:var(--muted);margin:8px 0 0}
+.film{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:22px;background:var(--paper)}
+.film figure{margin:0;aspect-ratio:9/16;max-width:100%;border-radius:8px;overflow:hidden;background:var(--chip);position:relative}
+.film video{width:100%;height:100%;object-fit:cover;display:block}
+.film .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;text-align:center;padding:8px}
+.tools{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;background:var(--paper)}
+.empty-paper{font-family:var(--diary);color:var(--muted);font-size:16px;line-height:34px}
+.cursor::after{content:"▍";color:var(--accent);animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.cursor::after{animation:none}}
+
+/* archive */
+.arch h3{font-family:var(--diary);font-size:20px;margin:0 0 12px}
+.arch-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.acard{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:12px 14px;text-align:left;display:flex;flex-direction:column;gap:4px;min-width:0}
+.acard:hover{border-color:var(--muted)}
+.acard[aria-current="true"]{border-color:var(--accent)}
+.acard .d{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;justify-content:space-between;gap:8px}
+.acard .t{font-family:var(--diary);font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acard .s{font-size:13px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.arch-empty{color:var(--muted);font-size:14px;border:1px dashed var(--line);border-radius:var(--r);padding:16px}
+.note{font-size:12.5px;color:var(--muted)}
+.gate{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;align-items:center;justify-content:center;
+  padding:calc(24px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));overflow:auto}
+.gate-card{width:100%;max-width:360px;display:flex;flex-direction:column;gap:14px}
+.gate-card h1{font-family:var(--diary);font-size:30px;margin:0}
+.gate-card p{margin:0;color:var(--muted)}
+.gate-card label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted);font-weight:500}
+.gate-card input{border:1px solid var(--line);background:var(--paper);border-radius:12px;padding:12px 14px;font-size:16px;color:var(--ink)}
+.gate-card input#gPin{letter-spacing:.5em;font-variant-numeric:tabular-nums}
+.gate-card .ghost{align-self:center}
+.who{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted)}
+.who b{color:var(--ink);font-weight:600}
+.topright{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate" hidden>
+  <form class="gate-card" id="gateForm" novalidate>
+    <h1>하루 조각 일기</h1>
+    <p>아이디와 숫자 4자리 비밀번호로 들어가요.</p>
+    <label>아이디<input id="gUser" maxlength="20" autocomplete="username" autocapitalize="off" required></label>
+    <label>비밀번호 (숫자 4자리)<input id="gPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="current-password" required></label>
+    <div id="gKeyWrap" hidden>
+      <label>Gemini API 키<input id="gKey" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Gemini API 키"></label>
+      <p class="hint">처음 한 번만 넣으면 이 기기에 기억해요. 키는 aistudio.google.com 에서 무료로 받을 수 있어요.</p>
+    </div>
+    <button class="go" id="gLogin" type="submit">들어가기</button>
+    <button class="ghost" type="button" id="gRegister">처음이에요, 이 아이디로 만들기</button>
+    <p class="msg" id="gMsg" role="status"></p>
+    <button class="ghost" type="button" id="gKeyToggle">AI 키 바꾸기</button>
+  </form>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header class="top">
+    <div class="brand">
+      <h1>하루 조각 일기</h1>
+      <p>오늘의 조각만 건네주면, 일기는 대신 써 드릴게요.</p>
+    </div>
+    <div class="topright">
+    <span class="who"><b id="whoName"></b><button class="ghost" id="logoutBtn">나가기</button></span>
+    <div class="datebox" aria-label="날짜 선택">
+      <button id="prevDay" aria-label="전날">‹</button>
+      <input type="date" id="dateInput" aria-label="일기 날짜">
+      <button id="nextDay" aria-label="다음날">›</button>
+    </div>
+    </div>
+  </header>
+
+  <div class="main">
+    <section class="bench" aria-label="일기 재료">
+      <div>
+        <p class="label">쓰는 방식</p>
+        <div class="seg" role="group">
+          <button id="modeKeyword" aria-pressed="true">키워드형<small>단어만 툭툭</small></button>
+          <button id="modeQuestion" aria-pressed="false">질문형<small>물어보면 대답</small></button>
+        </div>
+      </div>
+
+      <div id="keywordPane">
+        <p class="label">오늘의 키워드</p>
+        <div class="chipfield" id="chipfield">
+          <input id="kwInput" placeholder="단어 입력 후 Enter (예: 비, 김치찌개, 야근)" autocomplete="off">
+        </div>
+        <div class="kwqa" id="kwQaList"></div>
+        <div class="ask" id="kwAsk" hidden style="margin-top:10px">
+          <p class="qtext" id="kwQText"></p>
+          <input id="kwQInput" placeholder="편하게 대답해 주세요" autocomplete="off">
+          <div class="row">
+            <button class="primary-sm" id="kwQAnswer">대답하기</button>
+            <button class="ghost" id="kwQSkip">건너뛰기</button>
+            <button class="ghost" id="kwQStop">그만 물어봐</button>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="ghost" id="kwAskBtn">키워드로 더 물어봐 줘</button>
+        </div>
+      </div>
+
+      <div id="questionPane" hidden>
+        <p class="label">대답하다 보면 일기가 돼요</p>
+        <label class="switch" for="fuToggle">
+          <span>꼬리질문 받기<small>대답하면 궁금한 걸 한두 개 더 물어봐요</small></span>
+          <input type="checkbox" id="fuToggle" checked>
+        </label>
+        <div class="qa">
+          <div class="qa-done" id="qaDone"></div>
+          <div class="ask" id="askBox">
+            <span class="count" id="qCount"></span>
+            <p class="qtext" id="qText"></p>
+            <input id="qInput" placeholder="편하게 대답해 주세요" autocomplete="off">
+            <div class="row">
+              <button class="primary-sm" id="qAnswer">대답하기</button>
+              <button class="ghost" id="qSkip">건너뛰기</button>
+              <button class="ghost" id="qStop" hidden>이 얘기 그만</button>
+              <button class="ghost" id="qSwap">다른 질문</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="label">말투</p>
+        <div class="tones" id="tones"></div>
+        <div id="customBox" hidden style="margin-top:8px">
+          <textarea id="customStyle" placeholder="평소 내가 쓰는 문장을 2~3개 붙여 넣어 주세요. 그 말투를 따라 써요."></textarea>
+        </div>
+      </div>
+
+      <div class="opts">
+        <div>
+          <p class="label">언어</p>
+          <select id="lang">
+            <option value="ko">한국어</option>
+            <option value="en">English (한국어 해석 포함)</option>
+            <option value="ja">日本語 (한국어 해석 포함)</option>
+            <option value="zh">中文 (한국어 해석 포함)</option>
+          </select>
+        </div>
+        <div>
+          <p class="label">길이</p>
+          <div class="pills" role="group" aria-label="길이">
+            <button data-len="short" aria-pressed="false">짧게</button>
+            <button data-len="mid" aria-pressed="true">보통</button>
+            <button data-len="long" aria-pressed="false">길게</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="label">오늘의 클립 <span style="font-weight:400;letter-spacing:0">· 최대 4개, 30초 이하</span></p>
+        <div class="clips-in" id="clipsIn"></div>
+        <input type="file" id="clipFile" accept="video/*" hidden multiple>
+      </div>
+
+      <button class="go" id="goBtn">일기 써 줘</button>
+      <p class="msg" id="msg" role="status"></p>
+    </section>
+
+    <article class="paper" id="paper" aria-live="polite">
+      <div class="meta">
+        <span class="date" id="pDate"></span>
+      </div>
+      <h2 id="pTitle"></h2>
+      <div class="body" id="pBody"></div>
+      <details class="trans" id="pTransWrap" hidden><summary>한국어 해석 보기</summary><p id="pTrans"></p></details>
+      <div class="film" id="pFilm"></div>
+      <div class="tools" id="pTools" hidden>
+        <button class="ghost" id="editBtn">직접 고치기</button>
+        <button class="ghost" id="copyBtn">본문 복사</button>
+        <button class="ghost" id="regenBtn">다시 쓰기</button>
+      </div>
+    </article>
+  </div>
+
+  <section class="arch" aria-label="지난 일기">
+    <h3>지난 일기</h3>
+    <div class="arch-list" id="archList"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,'0');
+const toStr = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const WD = ['일','월','화','수','목','금','토'];
+const fmtLong = s => { const [y,m,d]=s.split('-').map(Number); const dt=new Date(y,m-1,d); return `${y}년 ${m}월 ${d}일 ${WD[dt.getDay()]}요일`; };
+const fmtShort = s => { const [y,m,d]=s.split('-').map(Number); const dt=new Date(y,m-1,d); return `${y}.${pad(m)}.${pad(d)} (${WD[dt.getDay()]})`; };
+
+const TONES = [
+  {id:'plain', name:'담백한 메모', ex:'점심은 김치찌개. 비가 왔다.', rule:'짧고 담백한 메모체. 꾸밈 없이 사실 위주로, 문장은 짧게 끊는다. 한국어라면 "~했다" 체.'},
+  {id:'essay', name:'감성 에세이', ex:'창밖의 빗소리가 오늘을 천천히…', rule:'잔잔한 감성 에세이체. 감각적인 묘사(소리, 냄새, 빛)를 조금 더하고 여운 있게 끝낸다. 한국어라면 "~했다" 체.'},
+  {id:'chat', name:'반말 수다', ex:'아 오늘 진짜 비 엄청 왔잖아 ㅋㅋ', rule:'친구에게 말하듯 편한 반말 수다체. 감탄사나 ㅋㅋ를 가끔 섞되 과하지 않게.'},
+  {id:'kid', name:'그림일기', ex:'날씨: 비. 오늘은 참 재미있었다.', rule:'초등학생 그림일기체. 첫 줄에 "날씨:"를 쓰고, 단순하고 솔직한 문장으로, "참 ~했다" 같은 마무리.'},
+  {id:'poem', name:'짧은 시', ex:'빗소리 사이로 / 찌개가 끓었다', rule:'짧은 산문시. 행갈이를 활용하고 하루의 장면을 이미지로 압축한다.'},
+  {id:'custom', name:'내 말투', ex:'예시 문장을 따라 써요', rule:''}
+];
+const LANG = {ko:'한국어', en:'영어', ja:'일본어', zh:'중국어(간체)'};
+const LEN = {short:'3~5문장', mid:'7~10문장', long:'12~16문장'};
+const Q_MAIN = ['오늘 아침은 뭐 먹었어?','오늘 제일 오래 머문 곳은 어디야?','오늘 만난 사람 중에 기억나는 사람 있어?','오늘 제일 웃겼거나 좋았던 순간은?','조금 지치거나 귀찮았던 일은?','지금 기분을 한 단어로 말하면?'];
+const Q_POOL = ['오늘 날씨는 어땠어?','점심이나 저녁 중에 맛있었던 거 있어?','오늘 새로 알게 된 게 있어?','오늘 들은 말 중에 마음에 남는 말 있어?','오늘 쓴 돈 중에 아깝지 않았던 건?','오늘 몸 움직인 적 있어? 산책이든 운동이든','사진첩에 오늘 찍은 게 있다면 뭐야?','오늘 하루에 제목을 붙인다면?','내일의 나한테 한마디 한다면?','오늘 미뤄둔 일이 있어?'];
+
+const EXAMPLE = {
+  date:'2026-10-20', example:true, mode:'keyword', tone:'essay', lang:'ko', len:'mid',
+  inputs:{keywords:['비','김치찌개','퇴근길 우산'], note:'우산을 두고 와서 편의점에서 샀다'},
+  title:'우산 하나 값의 저녁',
+  body:'아침부터 하늘이 낮게 내려앉아 있더니, 오후가 되자 결국 비가 쏟아졌다.\n점심은 근처 식당의 김치찌개였다. 뜨거운 국물을 몇 숟갈 뜨고 나니 축축했던 기분이 조금 풀렸다.\n퇴근길에는 우산을 두고 온 걸 알았다. 편의점 앞에서 잠깐 망설이다가 비닐우산 하나를 샀다.\n투명한 우산 위로 빗방울이 떨어지는 소리가 생각보다 듣기 좋았다.\n괜히 집까지 조금 돌아서 걸었다.',
+  translation:'', clips:[]
+};
+
+const state = {
+  date: toStr(new Date()), mode:'keyword', tone:'essay', lang:'ko', len:'mid',
+  keywords:[], note:'', qa:[], qQueue:Q_MAIN.map(q=>({q,depth:0})), qPool:[...Q_POOL], customStyle:'',
+  followup:true, thinking:false, kwQa:[], kwAskQ:null, kwThinking:false,
+  clips:[], current:null, entries:new Map(), generating:false, editing:false
+};
+
+/* ---------- 설정 ---------- */
+// 원하면 아래 따옴표 안에 Gemini API 키를 직접 넣어도 돼요. 비워 두면 처음 들어갈 때 화면에서 물어봐요.
+const EMBED_KEY = "__GEMINI_API_KEY__"; // Netlify 환경 변수에서 채워 넣음
+const MODEL = "gemini-3.6-flash";        // 일기 쓰기
+const FAST_MODEL = "gemini-3.5-flash-lite"; // 꼬리질문
+
+/* ---------- 온라인 저장소 (Supabase) ---------- */
+// Supabase 프로젝트를 만든 뒤 Project URL 과 anon(또는 publishable) key 를 아래에 붙여 넣으세요.
+const SUPABASE_URL = "__SUPABASE_URL__";
+const SUPABASE_KEY = "__SUPABASE_ANON_KEY__";
+const MAX_USERS = 2;
+
+const sample = true;
+let session = null; // {user, pin}
+let ready = false;
+let userKey = '';
+const SESSION_KEY = 'haru-session';
+const KEY_LS = 'haru-gemini-key';
+const getKey = () => { if(EMBED_KEY.trim() && !EMBED_KEY.startsWith("__")) return EMBED_KEY.trim(); try{ return localStorage.getItem(KEY_LS)||''; }catch(_){ return ''; } };
+const sb = (SUPABASE_URL && SUPABASE_KEY && !SUPABASE_URL.startsWith('__') && window.supabase) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{persistSession:false}}) : null;
+
+async function sha(text){
+  if(window.crypto && crypto.subtle){
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  let h=5381; for(const ch of text) h=((h<<5)+h+ch.charCodeAt(0))|0; return 'x'+(h>>>0).toString(16);
+}
+const hashPin = (name,pin)=>sha(`haru:${name}:${pin}`);
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2));
+const publicUrl = path => sb.storage.from('haru-clips').getPublicUrl(path).data.publicUrl;
+function dbFail(error){ throw {code:'db', message: /fetch|network/i.test(error.message||'') ? '인터넷 연결을 확인해 주세요.' : `저장소 오류: ${error.message}`}; }
+
+async function gemini(model, prompt){
+  const key = getKey();
+  if(!key) throw {code:'no_key', message:'Gemini API 키가 없어요. 나가기 → AI 키 바꾸기에서 넣어 주세요.'};
+  let r;
+  try{
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method:'POST', headers:{'Content-Type':'application/json', 'x-goog-api-key':key},
+      body: JSON.stringify({contents:[{role:'user', parts:[{text:prompt}]}]})});
+  }catch(_){ throw {code:'network', message:'AI에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.'}; }
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok){
+    if(r.status===429) throw {code:'rate_limited', message:'무료 사용량이 잠시 꽉 찼어요. 1분쯤 뒤에 다시 해 주세요.'};
+    if(r.status===400 && /API key/i.test(j?.error?.message||'')) throw {code:'bad_key', message:'Gemini API 키가 맞지 않아요. 나가기 → AI 키 바꾸기에서 다시 넣어 주세요.'};
+    throw {code:'ai_error', message:`AI 호출 실패: ${j?.error?.message || r.status}`};
+  }
+  return ((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(p=>p.text||'').join('').trim();
+}
+
+async function api(action, payload, creds){
+  if(!sb) throw {code:'no_db', message:'파일 안에 Supabase 주소와 키가 아직 없어요.'};
+  const c = creds || session || {};
+  const name = (c.user||'').trim();
+  const fail = (code,message)=>{ throw {code, message}; };
+  switch(action){
+    case 'register': {
+      if(!name || name.length>20) fail('bad_name','아이디는 1~20자로 정해 주세요.');
+      if(!/^\d{4}$/.test(c.pin||'')) fail('bad_pin','비밀번호는 숫자 4자리예요.');
+      const {data:ex, error:e1} = await sb.from('haru_users').select('name').eq('name', name).maybeSingle();
+      if(e1) dbFail(e1);
+      if(ex) fail('taken','이미 있는 아이디예요. 그 아이디로 들어가거나 다른 이름을 정해 주세요.');
+      const {count, error:e2} = await sb.from('haru_users').select('name', {count:'exact', head:true});
+      if(e2) dbFail(e2);
+      if((count||0) >= MAX_USERS) fail('full', `이 일기장은 ${MAX_USERS}명까지만 쓸 수 있어요.`);
+      const {error:e3} = await sb.from('haru_users').insert({name, pin_hash: await hashPin(name, c.pin)});
+      if(e3) dbFail(e3);
+      return {ok:true};
+    }
+    case 'login': {
+      const {data:u, error} = await sb.from('haru_users').select('name,pin_hash').eq('name', name).maybeSingle();
+      if(error) dbFail(error);
+      if(!u) fail('auth','없는 아이디예요. 처음이면 "이 아이디로 만들기"를 눌러 주세요.');
+      if(u.pin_hash !== await hashPin(name, c.pin||'')) fail('auth','비밀번호가 맞지 않아요.');
+      userKey = (await sha('u:'+name)).slice(0,16);
+      return {ok:true, name};
+    }
+    case 'list': {
+      const {data, error} = await sb.from('haru_entries').select('date,data').eq('user_name', name).order('date', {ascending:false});
+      if(error) dbFail(error);
+      return {entries:(data||[]).map(e=>({date:e.date, data:{...e.data, clips:(e.data.clips||[]).map(cl=>({...cl, url:publicUrl(cl.path)}))}}))};
+    }
+    case 'save': {
+      const data = {...payload.data, clips:(payload.data.clips||[]).map(cl=>({path:cl.path, dur:cl.dur||0}))};
+      const {error} = await sb.from('haru_entries').upsert({user_name:name, date:payload.date, data, updated_at:new Date().toISOString()});
+      if(error) dbFail(error);
+      return {ok:true};
+    }
+    case 'upload': {
+      const f = payload.file;
+      const ext = /webm/.test(f.type) ? 'webm' : /quicktime/.test(f.type) ? 'mov' : 'mp4';
+      const path = `${userKey}/${state.date}/${newId()}.${ext}`;
+      const {error} = await sb.storage.from('haru-clips').upload(path, f, {contentType: f.type || 'video/mp4'});
+      if(error) fail('upload', /size|large|exceed/i.test(error.message) ? '20MB 이하 영상만 올릴 수 있어요.' : `업로드 실패: ${error.message}`);
+      return {path, url: publicUrl(path)};
+    }
+    case 'delete-clip': {
+      if(String(payload.path).startsWith(userKey+'/')) await sb.storage.from('haru-clips').remove([payload.path]);
+      return {ok:true};
+    }
+    case 'generate': return {text: await gemini(MODEL, payload.prompt)};
+    case 'followup': return {text: await gemini(FAST_MODEL, payload.prompt)};
+  }
+  fail('unknown','알 수 없는 요청이에요.');
+}
+async function ai(kind, prompt){ const j = await api(kind, {prompt}); return {text: j.text||''}; }
+
+async function saveEntry(e){
+  const clean = {...e, clips:(e.clips||[]).filter(c=>c.path).map(c=>({path:c.path, dur:c.dur||0}))};
+  delete clean.example; delete clean.date;
+  state.entries.set(e.date, {...e});
+  renderArchive();
+  try{ await api('save', {date:e.date, data:clean}); }
+  catch(err){ setMsg(err.message||'저장에 실패했어요. 다시 시도해 주세요.', true); }
+}
+async function loadAll(){
+  const j = await api('list');
+  state.entries.clear();
+  (j.entries||[]).forEach(x=>state.entries.set(x.date, {...x.data, date:x.date}));
+}
+
+/* ---------- gate ---------- */
+function showGate(msg){
+  $('app').hidden = true; $('gate').hidden = false;
+  $('gKeyWrap').hidden = !!getKey(); $('gKeyToggle').hidden = !getKey() || (!!EMBED_KEY.trim() && !EMBED_KEY.startsWith('__'));
+  $('gMsg').textContent = msg||''; $('gMsg').classList.toggle('err', !!msg);
+  setTimeout(()=>$('gUser').focus(), 50);
+}
+async function enter(creds, isNew){
+  const user = creds.user.trim(), pin = creds.pin;
+  if(!user){ $('gMsg').textContent='아이디를 적어 주세요.'; $('gMsg').classList.add('err'); return; }
+  if(!/^\d{4}$/.test(pin)){ $('gMsg').textContent='비밀번호는 숫자 4자리예요.'; $('gMsg').classList.add('err'); return; }
+  const k = $('gKey').value.trim();
+  if(k){ try{ localStorage.setItem(KEY_LS, k); }catch(_){} }
+  $('gLogin').disabled = true; $('gRegister').disabled = true;
+  $('gMsg').classList.remove('err'); $('gMsg').textContent = isNew ? '만드는 중…' : '들어가는 중…';
+  try{
+    if(!getKey()){ throw {message:'Gemini API 키를 넣어 주세요.'}; }
+    if(isNew) await api('register', {}, {user, pin});
+    await api('login', {}, {user, pin});
+    session = {user, pin};
+    try{ localStorage.setItem(SESSION_KEY, JSON.stringify(session)); }catch(_){}
+    await openApp();
+  }catch(err){
+    $('gMsg').textContent = err.message || '들어가지 못했어요.'; $('gMsg').classList.add('err');
+  }finally{
+    $('gLogin').disabled = false; $('gRegister').disabled = false;
+  }
+}
+async function openApp(){
+  $('whoName').textContent = session.user;
+  $('gate').hidden = true; $('app').hidden = false; $('gPin').value='';
+  try{ await loadAll(); }catch(err){ setMsg(err.message, true); }
+  ready = true;
+  loadDate(toStr(new Date()), true);
+}
+function logout(msg){
+  session = null; state.entries.clear(); state.current = null;
+  try{ localStorage.removeItem(SESSION_KEY); }catch(_){}
+  showGate(msg);
+}
+$('gateForm').addEventListener('submit', e=>{ e.preventDefault(); enter({user:$('gUser').value, pin:$('gPin').value}, false); });
+$('gRegister').onclick = ()=>enter({user:$('gUser').value, pin:$('gPin').value}, true);
+$('gPin').addEventListener('input', e=>{ e.target.value = e.target.value.replace(/\D/g,'').slice(0,4); });
+$('logoutBtn').onclick = ()=>logout('');
+$('gKeyToggle').onclick = ()=>{ $('gKeyWrap').hidden=false; $('gKeyToggle').hidden=true; $('gKey').value=''; $('gKey').focus(); };
+
+/* ---------- mode ---------- */
+function setMode(m){
+  state.mode=m;
+  $('modeKeyword').setAttribute('aria-pressed', m==='keyword');
+  $('modeQuestion').setAttribute('aria-pressed', m==='question');
+  $('keywordPane').hidden = m!=='keyword';
+  $('questionPane').hidden = m!=='question';
+  if(m==='question') renderQA();
+}
+$('modeKeyword').onclick=()=>setMode('keyword');
+$('modeQuestion').onclick=()=>setMode('question');
+
+/* ---------- keywords ---------- */
+function renderChips(){
+  const f=$('chipfield'); f.querySelectorAll('.kchip').forEach(n=>n.remove());
+  const input=$('kwInput');
+  state.keywords.forEach((k,i)=>{
+    const c=document.createElement('span'); c.className='kchip';
+    const t=document.createElement('span'); t.textContent=k;
+    const b=document.createElement('button'); b.textContent='×'; b.setAttribute('aria-label',`${k} 지우기`);
+    b.onclick=()=>{ state.keywords.splice(i,1); renderChips(); };
+    c.append(t,b); f.insertBefore(c,input);
+  });
+}
+function addKw(v){ v.split(/[,，]/).map(s=>s.trim()).filter(Boolean).forEach(s=>{ if(!state.keywords.includes(s) && state.keywords.length<15) state.keywords.push(s); }); renderChips(); }
+$('kwInput').addEventListener('keydown',e=>{
+  if(e.isComposing) return;
+  if(e.key==='Enter'||e.key===','){ e.preventDefault(); addKw(e.target.value); e.target.value=''; }
+  else if(e.key==='Backspace' && !e.target.value && state.keywords.length){ state.keywords.pop(); renderChips(); }
+});
+$('kwInput').addEventListener('blur',e=>{ if(e.target.value.trim()){ addKw(e.target.value); e.target.value=''; } });
+$('chipfield').onclick=e=>{ if(e.target.id==='chipfield') $('kwInput').focus(); };
+
+/* ---------- questions ---------- */
+const mk = q => ({q, depth:0});
+const MAX_DEPTH = 2;
+
+async function aiFollowUp(context, asked){
+  const prompt = `너는 친구의 하루 이야기를 들으며 일기 재료를 모아 주는 다정한 친구다.
+아래 대화를 보고, 마지막 대답에 대해 자연스럽게 궁금해할 만한 꼬리 질문을 딱 하나 만든다.
+- 반말, 한 문장, 25자 안팎, 물음표로 끝낸다.
+- 맛, 기분, 이유, 누구와 했는지, 원래 좋아하는지, 다음엔 어떻게 할지처럼 일기를 풍부하게 해 줄 디테일을 묻는다.
+- 이미 나온 질문과 겹치지 않게 한다: ${asked.join(' / ')||'(없음)'}
+- 대답이 "없어", "몰라", "기억 안 나"처럼 더 물을 게 없으면 SKIP만 출력한다.
+- 질문 문장만 출력한다.
+
+${context}`;
+  const r = await ai('followup', prompt);
+  const t = (r.text||'').trim().split('\n')[0].replace(/^["“'']+|["”'']+$/g,'').replace(/^Q:\s*/,'').trim();
+  if(!t || /SKIP/i.test(t)) return null;
+  return t;
+}
+function fuError(err){
+  const code=err&&err.code;
+  if(code==='rate_limited') setMsg('무료 사용량이 잠시 꽉 차서 꼬리질문을 쉬어요. 1분쯤 뒤에 다시 돼요.', true);
+  else if(err && err.message && code!=='auth') setMsg(err.message, true);
+}
+
+function renderQA(){
+  const done=$('qaDone'); done.innerHTML='';
+  state.qa.forEach((item,i)=>{
+    const d=document.createElement('div'); d.className='qa-item'+(item.depth?' fu':'');
+    const q=document.createElement('span'); q.className='q'; q.textContent=item.q;
+    const a=document.createElement('span'); a.className='a'; a.textContent=item.a;
+    const b=document.createElement('button'); b.textContent='×'; b.setAttribute('aria-label','이 대답 지우기');
+    b.onclick=()=>{ state.qa.splice(i,1); renderQA(); };
+    d.append(q,a,b); done.append(d);
+  });
+  done.hidden = !state.qa.length;
+  done.scrollTop = done.scrollHeight;
+  const cur = state.qQueue[0];
+  const box=$('askBox'); box.classList.toggle('thinking', state.thinking);
+  const busy = state.thinking;
+  ['qAnswer','qSkip','qSwap','qStop'].forEach(id=>$(id).disabled=busy);
+  $('qInput').disabled=busy;
+  if(busy){
+    $('qText').textContent='음… 하나만 더 궁금한데'; $('qText').classList.add('cursor');
+  } else {
+    $('qText').classList.remove('cursor');
+    if(!cur){ $('qText').textContent='질문을 다 했어요. 이제 일기를 써 볼까요?'; }
+    else {
+      $('qText').textContent=cur.q;
+      if(cur.depth){ const t=document.createElement('span'); t.className='fu-tag'; t.textContent='꼬리질문'; $('qText').append(t); }
+    }
+  }
+  const none = !cur && !busy;
+  $('qInput').hidden=none; $('qAnswer').hidden=none; $('qSkip').hidden=none;
+  $('qStop').hidden = none || busy || !(cur && cur.depth);
+  $('qSwap').textContent = none ? '질문 더 받기' : '다른 질문';
+  $('qCount').textContent = `대답 ${state.qa.length}개 · ${state.qa.length>=3?'이제 일기 써도 충분해요':'3개 이상이면 좋아요'}`;
+}
+function chainFor(list){
+  const out=[];
+  for(let i=list.length-1;i>=0;i--){ out.unshift(list[i]); if(!list[i].depth) break; }
+  return out;
+}
+async function answer(){
+  if(state.thinking) return;
+  const v=$('qInput').value.trim(); if(!v){ $('qInput').focus(); return; }
+  const cur=state.qQueue.shift(); if(!cur) return;
+  state.qa.push({q:cur.q, a:v, depth:cur.depth||0}); $('qInput').value='';
+  if(state.followup && sample && (cur.depth||0) < MAX_DEPTH){
+    state.thinking=true; renderQA();
+    try{
+      const chain=chainFor(state.qa);
+      const fq=await aiFollowUp('대화\n'+chain.map(x=>`Q: ${x.q}\nA: ${x.a}`).join('\n'), state.qa.map(x=>x.q));
+      if(fq) state.qQueue.unshift({q:fq, depth:(cur.depth||0)+1});
+    }catch(err){ fuError(err); }
+    state.thinking=false;
+  }
+  renderQA(); $('qInput').focus();
+}
+function dropFollowUps(){ while(state.qQueue[0] && state.qQueue[0].depth) state.qQueue.shift(); }
+$('qAnswer').onclick=answer;
+$('qInput').addEventListener('keydown',e=>{ if(e.key==='Enter' && !e.isComposing){ e.preventDefault(); answer(); }});
+$('qSkip').onclick=()=>{ const c=state.qQueue.shift(); if(c && !c.depth) state.qPool.push(c.q); renderQA(); };
+$('qStop').onclick=()=>{ dropFollowUps(); renderQA(); $('qInput').focus(); };
+$('qSwap').onclick=()=>{
+  dropFollowUps();
+  if(!state.qPool.length) state.qPool=[...Q_POOL].filter(q=>!state.qa.some(x=>x.q===q));
+  const i=Math.floor(Math.random()*state.qPool.length);
+  const nq=state.qPool.splice(i,1)[0]; if(!nq) return;
+  const cur=state.qQueue.shift(); if(cur) state.qPool.push(cur.q);
+  state.qQueue.unshift(mk(nq)); renderQA();
+};
+$('fuToggle').onchange=e=>{ state.followup=e.target.checked; if(!state.followup){ dropFollowUps(); renderQA(); } try{localStorage.setItem('haru-followup', state.followup?'1':'0')}catch(_){} };
+try{ if(localStorage.getItem('haru-followup')==='0'){ state.followup=false; $('fuToggle').checked=false; } }catch(_){}
+
+/* ---------- keyword follow-up ---------- */
+const KW_MAX = 8;
+function renderKwQa(){
+  const w=$('kwQaList'); w.innerHTML='';
+  state.kwQa.forEach((item,i)=>{
+    const d=document.createElement('div'); d.className='qa-item';
+    const q=document.createElement('span'); q.className='q'; q.textContent=item.q;
+    const a=document.createElement('span'); a.className='a'; a.textContent=item.a;
+    const b=document.createElement('button'); b.textContent='×'; b.setAttribute('aria-label','이 대답 지우기');
+    b.onclick=()=>{ state.kwQa.splice(i,1); renderKwQa(); };
+    d.append(q,a,b); w.append(d);
+  });
+  const box=$('kwAsk'); const on = !!state.kwAskQ || state.kwThinking;
+  box.hidden=!on; box.classList.toggle('thinking', state.kwThinking);
+  ['kwQAnswer','kwQSkip','kwQStop'].forEach(id=>$(id).disabled=state.kwThinking);
+  $('kwQInput').disabled=state.kwThinking;
+  if(state.kwThinking){ $('kwQText').textContent='키워드 보면서 궁금한 거 생각 중'; $('kwQText').classList.add('cursor'); }
+  else { $('kwQText').classList.remove('cursor'); $('kwQText').textContent=state.kwAskQ||''; }
+  $('kwAskBtn').hidden = on;
+  $('kwAskBtn').textContent = state.kwQa.length ? '조금 더 물어봐 줘' : '키워드로 더 물어봐 줘';
+}
+async function kwNext(){
+  if(state.kwQa.length>=KW_MAX){ state.kwAskQ=null; renderKwQa(); setMsg('이 정도면 재료가 넉넉해요.'); return; }
+  state.kwThinking=true; state.kwAskQ=null; renderKwQa();
+  try{
+    const ctx = `오늘의 키워드: ${state.keywords.join(', ')||'(없음)'}` + (state.note.trim()?`\n메모: ${state.note.trim()}`:'')
+      + (state.kwQa.length? '\n\n지금까지 대화\n'+state.kwQa.map(x=>`Q: ${x.q}\nA: ${x.a}`).join('\n') : '\n\n아직 대화 없음. 키워드 중 하나를 골라 첫 질문을 한다.')
+      + '\n\n마지막 대답을 더 파고들거나, 아직 안 물어본 키워드로 넘어가도 된다.';
+    state.kwAskQ = await aiFollowUp(ctx, state.kwQa.map(x=>x.q));
+    if(!state.kwAskQ && !state.kwQa.length) setMsg('물어볼 거리가 안 떠올랐어요. 키워드를 조금 더 넣어 주세요.');
+  }catch(err){ fuError(err); state.kwAskQ=null; }
+  state.kwThinking=false; renderKwQa();
+  if(state.kwAskQ) $('kwQInput').focus();
+}
+async function kwAnswer(){
+  if(state.kwThinking || !state.kwAskQ) return;
+  const v=$('kwQInput').value.trim(); if(!v){ $('kwQInput').focus(); return; }
+  state.kwQa.push({q:state.kwAskQ, a:v}); $('kwQInput').value='';
+  await kwNext();
+}
+$('kwAskBtn').onclick=()=>{
+    if(!state.keywords.length && !state.note.trim()){ setMsg('키워드를 하나 이상 넣으면 그걸 보고 물어볼게요.', true); return; }
+  setMsg(''); kwNext();
+};
+$('kwQAnswer').onclick=kwAnswer;
+$('kwQInput').addEventListener('keydown',e=>{ if(e.key==='Enter' && !e.isComposing){ e.preventDefault(); kwAnswer(); }});
+$('kwQSkip').onclick=()=>{ if(state.kwAskQ) state.kwQa.push({q:state.kwAskQ, a:'(넘어감)', skip:true}); kwNext(); };
+$('kwQStop').onclick=()=>{ state.kwAskQ=null; renderKwQa(); };
+
+/* ---------- tone / lang / len ---------- */
+function renderTones(){
+  const w=$('tones'); w.innerHTML='';
+  TONES.forEach(t=>{
+    const b=document.createElement('button'); b.className='tone'; b.setAttribute('aria-pressed', state.tone===t.id);
+    const n=document.createElement('b'); n.textContent=t.name;
+    const s=document.createElement('span'); s.textContent=t.ex;
+    b.append(n,s); b.onclick=()=>{ state.tone=t.id; renderTones(); }; w.append(b);
+  });
+  $('customBox').hidden = state.tone!=='custom';
+}
+$('customStyle').oninput=e=>{ state.customStyle=e.target.value; try{localStorage.setItem('haru-custom-style',e.target.value)}catch(_){} };
+try{ const cs=localStorage.getItem('haru-custom-style'); if(cs){ state.customStyle=cs; $('customStyle').value=cs; } }catch(_){}
+$('lang').onchange=e=>state.lang=e.target.value;
+document.querySelectorAll('[data-len]').forEach(b=>b.onclick=()=>{ state.len=b.dataset.len; document.querySelectorAll('[data-len]').forEach(x=>x.setAttribute('aria-pressed',x===b)); });
+
+/* ---------- clips ---------- */
+const clipSrc = c => c.url || '';
+function renderClipsIn(){
+  const w=$('clipsIn'); w.innerHTML='';
+  state.clips.forEach((c,i)=>{
+    const f=document.createElement('div'); f.className='cin';
+    const v=document.createElement('video'); v.src=clipSrc(c); v.muted=true; v.loop=true; v.autoplay=true; v.playsInline=true; v.setAttribute('playsinline','');
+    const x=document.createElement('button'); x.className='x'; x.textContent='×'; x.setAttribute('aria-label','클립 빼기');
+    x.onclick=()=>removeClip(i);
+    f.append(v,x);
+    const tag=document.createElement('span'); tag.className='tag'; tag.textContent = c.uploading ? '올리는 중…' : c.failed ? '저장 안 됨' : (c.dur?`${Math.round(c.dur)}초`:'');
+    if(tag.textContent) f.append(tag);
+    w.append(f);
+  });
+  if(state.clips.length<4){
+    const add=document.createElement('button'); add.className='cadd'; add.innerHTML='<span class="plus">+</span><span>클립 추가</span>';
+    add.onclick=()=>$('clipFile').click(); w.append(add);
+  }
+}
+function getDuration(file){ return new Promise(res=>{ const v=document.createElement('video'); v.preload='metadata'; const u=URL.createObjectURL(file); v.onloadedmetadata=()=>{ res(v.duration); URL.revokeObjectURL(u); }; v.onerror=()=>{ res(NaN); URL.revokeObjectURL(u); }; v.src=u; }); }
+$('clipFile').onchange=async e=>{
+  const files=[...e.target.files]; e.target.value='';
+  for(const file of files){
+    if(state.clips.length>=4){ setMsg('클립은 하루에 4개까지 넣을 수 있어요.', true); break; }
+    if(!file.type.startsWith('video/')){ setMsg(`${file.name}은 영상 파일이 아니에요.`, true); continue; }
+    if(file.size>20*1024*1024){ setMsg(`${file.name}이 20MB를 넘어요. 길이를 줄이거나 화질을 낮춰서 올려 주세요.`, true); continue; }
+    const dur=await getDuration(file);
+    if(dur>31){ setMsg(`${file.name}은 ${Math.round(dur)}초예요. 30초 이하로 잘라서 올려 주세요.`, true); continue; }
+    const clip={url:URL.createObjectURL(file), dur:isFinite(dur)?dur:0, uploading:true};
+    state.clips.push(clip); renderClipsIn();
+    try{
+      const j = await api('upload', {file});
+      clip.path = j.path; clip.uploading=false; setMsg('');
+    }catch(err){
+      clip.uploading=false; clip.failed=true;
+      setMsg(`${file.name}: ${err.message||'업로드에 실패했어요.'} 이 클립은 저장되지 않아요.`, true);
+    }
+    renderClipsIn();
+    if(state.current && !state.current.example && state.current.date===state.date){ state.current.clips=state.clips; saveEntry(state.current); renderPaper(); }
+  }
+};
+async function removeClip(i){
+  const [c]=state.clips.splice(i,1); renderClipsIn();
+  if(c && c.path){ try{ await api('delete-clip', {path:c.path}); }catch(_){} }
+  if(state.current && !state.current.example && state.current.date===state.date){ state.current.clips=[...state.clips]; saveEntry(state.current); renderPaper(); }
+}
+
+/* ---------- generate ---------- */
+function setMsg(t,err){ $('msg').textContent=t; $('msg').classList.toggle('err',!!err); }
+
+function buildPrompt(){
+  const tone=TONES.find(t=>t.id===state.tone);
+  const toneRule = tone.id==='custom'
+    ? `사용자의 말투를 흉내 낸다. 아래 예시 문장의 어휘, 문장 길이, 어미, 이모티콘 사용 습관을 따라 쓴다.\n예시:\n${state.customStyle||'(예시 없음: 자연스러운 일상 말투)'}`
+    : tone.rule;
+  let material='';
+  if(state.mode==='keyword'){
+    material = `키워드: ${state.keywords.join(', ')||'(없음)'}` + (state.note.trim()?`\n메모: ${state.note.trim()}`:'')
+      + (state.kwQa.filter(x=>!x.skip).length ? '\n\n덧붙인 대답\n'+state.kwQa.filter(x=>!x.skip).map(x=>`Q: ${x.q}\nA: ${x.a}`).join('\n') : '');
+  } else {
+    material = state.qa.map(x=>`Q: ${x.q}\nA: ${x.a}`).join('\n');
+  }
+  const foreign = state.lang!=='ko';
+  return `너는 사용자의 하루를 대신 일기로 써 주는 도우미다.
+
+규칙
+- 사용자가 준 재료만 바탕으로 1인칭 일기를 쓴다. 재료에 없는 사건, 사람, 장소는 지어내지 않는다. 감정이나 분위기를 자연스럽게 잇는 정도의 살 붙이기만 허용한다.
+- 날짜: ${fmtLong(state.date)}
+- 말투: ${toneRule}
+- 언어: ${LANG[state.lang]}로 쓴다.${foreign?' 학습자가 읽기 좋게 너무 어려운 표현은 피한다.':''}
+- 길이: 본문 ${LEN[state.len]}.
+- 마크다운, 이모지 목록, 머리말 없이 아래 형식만 출력한다.
+
+형식
+TITLE: (일기 제목 한 줄, ${LANG[state.lang]})
+BODY:
+(본문)${foreign?`
+KO:
+(본문의 자연스러운 한국어 해석)`:''}
+
+오늘의 재료
+${material}`;
+}
+function parseOut(t){
+  const title=(t.match(/TITLE:\s*(.*)/)||[])[1]||'';
+  let body='', trans='';
+  const bi=t.indexOf('BODY:');
+  if(bi>=0){
+    let rest=t.slice(bi+5);
+    const ki=rest.search(/\n\s*KO:/);
+    if(ki>=0){ trans=rest.slice(ki).replace(/^\s*KO:\s*/,'').trim(); rest=rest.slice(0,ki); }
+    body=rest.replace(/^\s*\n/,'').trim();
+  }
+  return {title:title.trim(), body, trans};
+}
+
+async function generate(){
+  if(state.generating) return;
+  const hasMaterial = state.mode==='keyword' ? (state.keywords.length || state.note.trim() || state.kwQa.length) : state.qa.length;
+  if(!hasMaterial){ setMsg(state.mode==='keyword'?'키워드를 하나 이상 넣어 주세요.':'질문에 하나 이상 대답해 주세요.', true); return; }
+  if(state.tone==='custom' && !state.customStyle.trim()){ setMsg('내 말투를 쓰려면 예시 문장을 넣어 주세요.', true); return; }
+  if(state.clips.some(c=>c.uploading)){ setMsg('클립을 올리는 중이에요. 잠시만 기다려 주세요.', true); return; }
+    state.generating=true; $('goBtn').disabled=true; $('goBtn').textContent='쓰는 중…'; setMsg('');
+  const entry={date:state.date, mode:state.mode, tone:state.tone, lang:state.lang, len:state.len,
+    inputs: state.mode==='keyword'?{keywords:[...state.keywords], note:state.note, kwQa:state.kwQa.map(x=>({...x}))}:{qa:state.qa.map(x=>({...x}))},
+    title:'', body:'', translation:'', clips:state.clips};
+  state.current=entry; state.editing=false;
+  renderPaper(true);
+  try{
+    const r = await ai('generate', buildPrompt());
+    const p=parseOut(r.text); entry.title=p.title||'오늘의 일기'; entry.body=p.body||r.text.trim(); entry.translation=p.trans;
+    renderPaper(); await saveEntry(entry); setMsg('저장했어요.');
+  }catch(err){
+    setMsg(err.code==='rate_limited' ? '무료 사용량이 잠시 꽉 찼어요. 1분쯤 뒤에 다시 눌러 주세요.' : (err.message||'일기를 쓰지 못했어요. 다시 시도해 주세요.'), true);
+    if(!entry.body){ state.current = state.entries.get(state.date)||null; }
+    renderPaper();
+  }finally{
+    state.generating=false; $('goBtn').disabled=false; $('goBtn').textContent='일기 써 줘';
+  }
+}
+$('goBtn').onclick=generate;
+$('regenBtn').onclick=generate;
+
+/* ---------- paper ---------- */
+function renderPaper(streaming){
+  const e = state.current;
+  $('pDate').textContent = fmtLong(e?e.date:state.date);
+  const tools=$('pTools');
+  if(!e){
+    $('pTitle').textContent='';
+    $('pBody').className='body empty-paper';
+    $('pBody').textContent = state.mode==='question'
+      ? '왼쪽 질문에 몇 개만 대답해 주세요.\n대답이 모이면 오늘 일기를 써 드릴게요.'
+      : '왼쪽에 오늘 있었던 일을 단어로 몇 개 적어 주세요.\n말투를 고르고 "일기 써 줘"를 누르면 여기에 일기가 채워져요.';
+    $('pTransWrap').hidden=true; $('pFilm').innerHTML=''; tools.hidden=true; return;
+  }
+  if(!state.editing){
+    $('pTitle').textContent = e.title || (streaming?'':'오늘의 일기');
+    $('pBody').className='body'+(streaming?' cursor':'');
+    $('pBody').textContent = e.body || (streaming?'오늘 하루를 정리하는 중':'');
+  }
+  $('pTransWrap').hidden = !e.translation;
+  $('pTrans').textContent = e.translation||'';
+  const film=$('pFilm'); film.innerHTML='';
+  const clips = e.clips||[];
+  if(e.example){
+    ['퇴근길 빗소리','김치찌개 김'].forEach(t=>{ const f=document.createElement('figure'); const ph=document.createElement('div'); ph.className='ph'; ph.textContent=`(${t} 클립 자리)`; f.append(ph); film.append(f); });
+  }
+  clips.forEach(c=>{
+    const src=clipSrc(c); if(!src) return;
+    const f=document.createElement('figure');
+    const v=document.createElement('video'); v.src=src; v.muted=true; v.loop=true; v.autoplay=true; v.playsInline=true; v.setAttribute('playsinline',''); v.preload='metadata';
+    v.addEventListener('click',()=>{ v.muted=!v.muted; });
+    v.title='누르면 소리 켜기/끄기';
+    f.append(v); film.append(f);
+  });
+  tools.hidden = streaming || e.example;
+}
+
+$('editBtn').onclick=()=>{
+  const e=state.current; if(!e) return;
+  if(!state.editing){
+    state.editing=true; $('pTitle').contentEditable='true'; $('pBody').contentEditable='true'; $('pBody').focus();
+    $('editBtn').textContent='고친 내용 저장';
+  } else {
+    e.title=$('pTitle').innerText.trim(); e.body=$('pBody').innerText.trim();
+    state.editing=false; $('pTitle').contentEditable='false'; $('pBody').contentEditable='false';
+    $('editBtn').textContent='직접 고치기'; saveEntry(e); renderPaper(); setMsg('고친 내용을 저장했어요.');
+  }
+};
+$('copyBtn').onclick=async()=>{
+  const e=state.current; if(!e) return;
+  const text=`${e.title}\n\n${e.body}`;
+  try{ await navigator.clipboard.writeText(text); setMsg('본문을 복사했어요.'); }
+  catch(_){ const r=document.createRange(); r.selectNodeContents($('pBody')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); setMsg('본문을 선택해 뒀어요. 복사해서 쓰세요.'); }
+};
+
+/* ---------- archive ---------- */
+function renderArchive(){
+  const w=$('archList'); w.innerHTML='';
+  const list=[...state.entries.values()].sort((a,b)=>b.date.localeCompare(a.date));
+  if(!list.length){ const d=document.createElement('div'); d.className='arch-empty'; d.textContent='아직 저장된 일기가 없어요. 첫 일기를 쓰면 여기에 날짜별로 모여요.'; w.append(d); return; }
+  list.forEach(e=>{
+    const b=document.createElement('button'); b.className='acard'; b.setAttribute('aria-current', e.date===state.date);
+    const d=document.createElement('span'); d.className='d';
+    const l=document.createElement('span'); l.textContent=fmtShort(e.date);
+    const r=document.createElement('span'); const n=(e.clips||[]).length; r.textContent = (TONES.find(t=>t.id===e.tone)||{}).name + (n?` · 클립 ${n}`:'');
+    d.append(l,r);
+    const t=document.createElement('span'); t.className='t'; t.textContent=e.title||'제목 없음';
+    const s=document.createElement('span'); s.className='s'; s.textContent=(e.body||'').replace(/\n/g,' ');
+    b.append(d,t,s); b.onclick=()=>loadDate(e.date); w.append(b);
+  });
+}
+
+/* ---------- date ---------- */
+function loadDate(d, initial){
+  if(state.editing){ state.editing=false; $('pTitle').contentEditable='false'; $('pBody').contentEditable='false'; $('editBtn').textContent='직접 고치기'; }
+  state.date=d; $('dateInput').value=d;
+  const e=state.entries.get(d);
+  if(e){
+    state.current=e; state.mode=e.mode||'keyword'; state.tone=e.tone||'essay'; state.lang=e.lang||'ko'; state.len=e.len||'mid';
+    if(e.inputs&&e.inputs.keywords){ state.keywords=[...e.inputs.keywords]; state.note=e.inputs.note||''; state.kwQa=(e.inputs.kwQa||[]).map(x=>({...x})); }
+    else { state.keywords=[]; state.note=''; state.kwQa=[]; }
+    if(e.inputs&&e.inputs.qa){ state.qa=e.inputs.qa.map(x=>({...x})); state.qQueue=Q_MAIN.filter(q=>!state.qa.some(x=>x.q===q)).map(mk); }
+    else { state.qa=[]; state.qQueue=Q_MAIN.map(mk); }
+    state.clips=(e.clips||[]).map(c=>({...c}));
+    e.clips=state.clips;
+  } else {
+    state.keywords=[]; state.note=''; state.qa=[]; state.qQueue=Q_MAIN.map(mk); state.qPool=[...Q_POOL]; state.kwQa=[];
+    state.clips=[];
+    state.current = null;
+  }
+  state.kwAskQ=null; state.kwThinking=false; state.thinking=false;
+  $('lang').value=state.lang;
+  document.querySelectorAll('[data-len]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.len===state.len));
+  renderChips(); renderKwQa(); renderTones(); setMode(state.mode); renderClipsIn(); renderPaper(); renderArchive(); setMsg('');
+}
+$('dateInput').onchange=e=>{ if(e.target.value) loadDate(e.target.value); };
+const shift=n=>{ const [y,m,d]=state.date.split('-').map(Number); loadDate(toStr(new Date(y,m-1,d+n))); };
+$('prevDay').onclick=()=>shift(-1); $('nextDay').onclick=()=>shift(1);
+
+/* ---------- 다른 기기에서 쓴 내용 반영 ---------- */
+let lastSync = 0;
+async function resync(){
+  if(!session || state.generating || state.editing || Date.now()-lastSync < 5000) return;
+  lastSync = Date.now();
+  try{ await loadAll(); const e=state.entries.get(state.date); if(e && (!state.current || state.current.date!==state.date || state.current.body!==e.body)) loadDate(state.date); else renderArchive(); }catch(_){}
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') resync(); });
+window.addEventListener('focus', resync);
+
+/* ---------- boot ---------- */
+$('dateInput').value=state.date;
+renderChips(); renderKwQa(); renderTones(); renderClipsIn(); renderQA(); renderPaper();
+(async()=>{
+  if(!sb){ showGate('파일 안에 Supabase 주소와 키를 넣어야 쓸 수 있어요.'); return; }
+  let saved=null; try{ saved=JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); }catch(_){}
+  if(saved && saved.user && saved.pin){
+    try{ await api('login', {}, saved); session=saved; await openApp(); return; }catch(_){}
+  }
+  showGate('');
+})();
+})();
+</script>
+</body>
+</html>
+
